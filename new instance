@@ -1,0 +1,64 @@
+#!/usr/bin/python
+#
+# This script will create an AMI for each of the instances listed in the 
+# instance_ids list. It will also clean up AMIs based on the images_to_keep 
+# variable. The cleanup logic has no concept of time so the images are just
+# deleted based on number.  It is recommended to run the script daily from 
+# cron during off peak time and by default keep 7 days.
+#
+
+import boto3
+import boto3.ec2
+import datetime
+import time
+
+#Number of images to keep
+#images_to_keep = 7
+b = boto3.client('ec2', region_name='ap-south-1')
+
+#Get instance ID from metadata
+metadata = boto.utils.get_instance_metadata()
+#instance_id = metadata['instance-id']
+instance_ids = ['i-xxxxxxxx']
+
+#Get instance Name tag
+instance_reservation = b.get_all_instances( instance_ids )
+
+for reservation in instance_reservation:
+  for instance in reservation.instances:
+    #Get Current Date
+    date = str( datetime.datetime.now() )
+
+    instance_name = instance.tags['Name']
+    instance_id = instance.id
+
+    AMI_name = instance_id + "_" + date
+    #Replace : with - in the timestamp portion of the AMI Name
+    AMI_name = AMI_name.replace(":", "-")
+
+    print "Creating AMI with these properties:"
+    print "   AMI Name: " + AMI_name
+    print "   Name Tag: " + instance_name
+    print "   Instance ID Tag: " + instance_id
+    print "   Date Tag: " + date
+
+    #break
+    #sys.exit()
+
+    #Create the AMI
+    image_id = b.create_image(instance_id,AMI_name,no_reboot=True)
+
+    #Tag the AMI with the instance name tag, id, and date
+    new_image = b.get_image(image_id)
+    new_image.add_tag("Name", instance_name)
+    new_image.add_tag("Instance", instance_id)
+    new_image.add_tag("Date", date)
+
+    print "AMI requested (" + str(image_id) + "), waiting for state to change to available."
+
+    #Wait for image to become available
+    while b.get_image(image_id).state != "available":
+        #print "  current state: " + str(b.get_image(image_id).state)
+        time.sleep(5)
+
+    print "AMI is available."
